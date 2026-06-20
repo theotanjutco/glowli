@@ -10,10 +10,10 @@ using a RAG-powered LLM.
 - **ML:** YOLOv8 + PyTorch + LangChain + ChromaDB + FLAN-T5
 
 ## Project Structure
-- 'mobile/' - Expo React Native IOS app
-- 'web/' - React web version
-- 'backend/' - FastAPI REST API + ML inference
-- 'ml/' YOLOv8 training scripts and RAG ingestion
+- mobile - Expo React Native IOS app
+- web - React web version
+- backend - FastAPI REST API + ML inference
+- ml YOLOv8 training scripts and RAG ingestion
 
 ## Setup
 Coming soon as the project develops
