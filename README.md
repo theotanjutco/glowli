@@ -18,7 +18,7 @@ using a RAG-powered LLM.
 ## System Architecture
 
 ```mermaid
-flowchart LR
+flowchart TB
     U[User] --> M[Mobile App]
     U --> W[Web App]
 
@@ -47,7 +47,7 @@ flowchart LR
 - [x] Repository setup
 - [x] Mobile app scaffold
 - [x] Web app scaffold
-- [] Backend API scaffold
+- [ ] Backend API scaffold
 
 ### Phase 2 – Core AI
 - [ ] Selfie upload
