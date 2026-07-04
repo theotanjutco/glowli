@@ -1,5 +1,7 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
+from typing import Literal, Annotated
 
 #------Create FastAPI app--------------
 app = FastAPI(
@@ -18,6 +20,19 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+#-----The blueprint/exact JSON shape the mobile app will receive---------
+# helps frontend and backend agree before using YOLO
+class SkinCondition(BaseModel):
+    label: str
+    severity: Literal["mild", "moderate", "severe"]
+    confidence: float
+    description: str
+
+class AnalyzeResponse(BaseModel):
+    skin_type: Literal["oily", "dry", "combination", "sensitive", "normal"]
+    summary: str
+    conditions: list[SkinCondition]
+
 #------Routes-------------------------
 @app.get("/")
 def root():
@@ -30,3 +45,25 @@ def health_check():
         "app": "Glowli API",
         "version": "0.1.0"
     }
+
+# Selfie Scan endpoint
+# Returns mock info as of now
+@app.post("/analyze", response_model = AnalyzeResponse)
+async def analyze_skin(file: Annotated[UploadFile, File()]):
+    contents = await file.read()
+
+    if not contents:
+        raise HTTPException(status_code = 400, detail = "Uploaded image is empty")
+    
+    return AnalyzeResponse(
+        skin_type = "combination",
+        summary = "Mock scan complete. Glowli found a few mild areas to review.",
+        conditions = [
+            SkinCondition(
+                label = "Acne",
+                severity = "mild",
+                confidence = .93,
+                description = "A small number of blemish-like spots were detected.",
+            )
+        ],
+    )
