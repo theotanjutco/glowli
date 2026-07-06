@@ -22,10 +22,9 @@
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "package": "com.theotanjutco.glowli"
     },
-    "package": "com.theotanjutco.glowli",
-    
     "web": {
       "favicon": "./assets/favicon.png"
     }

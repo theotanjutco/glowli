@@ -67,3 +67,4 @@ async def analyze_skin(file: Annotated[UploadFile, File()]):
             )
         ],
     )
+    
