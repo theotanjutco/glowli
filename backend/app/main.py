@@ -11,17 +11,17 @@ app = FastAPI(
 )
 
 #-----CORS Middleware--------------
-#allows app and web app to talk to this backend
+# Allows the local Glowli web app to talk to this backend during development.
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"], # Allow rerquests from everyone (change before shipping)
-    allow_credentials=True,
+    allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+    allow_credentials=False,
     allow_methods=["*"], # Allow all HTTP methods
     allow_headers=["*"],
 )
 
-#-----The blueprint/exact JSON shape the mobile app will receive---------
-# helps frontend and backend agree before using YOLO
+#-----The blueprint/exact JSON shape the web app will receive---------
+# helps frontend and backend agree before using YOLO (pydantic)
 class SkinCondition(BaseModel):
     label: str
     severity: Literal["mild", "moderate", "severe"]
@@ -55,6 +55,7 @@ async def analyze_skin(file: Annotated[UploadFile, File()]):
     if not contents:
         raise HTTPException(status_code = 400, detail = "Uploaded image is empty")
     
+    # mock response for now
     return AnalyzeResponse(
         skin_type = "combination",
         summary = "Mock scan complete. Glowli found a few mild areas to review.",
