@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { analyzeSelfie, getApiErrorMessage } from '../api/glowli';
 import type { AnalyzeResponse } from '../types/analysis';
+import { getImageValidationError } from '../utils/imageValidation';
 
 type AnalyzePageProps = {
   onBack: () => void;
@@ -25,10 +26,27 @@ export default function AnalyzePage({ onBack, onComplete }: AnalyzePageProps) {
     return () => URL.revokeObjectURL(objectUrl);
   }, [selectedFile]);
 
-  function handleFileChange(event: React.ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0] ?? null;
-    setSelectedFile(file);
+  function handleFileChange(event: React.ChangeEvent<HTMLInputElement>): void {
+    const input = event.currentTarget;
+    const file = input.files?.[0] ?? null;
+
     setErrorMessage(null);
+
+    if (!file) {
+      setSelectedFile(null);
+      return;
+    }
+
+    const validationError = getImageValidationError(file);
+
+    if (validationError) {
+      setSelectedFile(null);
+      setErrorMessage(validationError);
+      input.value = '';
+      return;
+    }
+
+    setSelectedFile(file);
   }
 
   async function handleAnalyze(): Promise<void> {
@@ -59,8 +77,8 @@ export default function AnalyzePage({ onBack, onComplete }: AnalyzePageProps) {
         <p className="eyebrow">Selfie upload</p>
         <h1 id="upload-title">Choose an image to analyze.</h1>
         <p>
-          Use a well-lit, front-facing photo. Glowli will send the original file
-          to the same FastAPI endpoint used by the earlier mobile prototype.
+          Use a well-lit, front-facing photo. Glowli will validate the image
+          before sending it to the FastAPI analysis endpoint.
         </p>
       </section>
 
@@ -68,7 +86,7 @@ export default function AnalyzePage({ onBack, onComplete }: AnalyzePageProps) {
         <label className="file-dropzone">
           <input
             type="file"
-            accept="image/*"
+            accept="image/jpeg,image/png,image/webp"
             onChange={handleFileChange}
             disabled={isAnalyzing}
           />
@@ -78,7 +96,7 @@ export default function AnalyzePage({ onBack, onComplete }: AnalyzePageProps) {
           ) : (
             <span className="empty-preview">
               <strong>Select a selfie</strong>
-              <small>JPEG, PNG, or another browser-supported image</small>
+              <small>JPEG, PNG, or WebP - max 10 MB</small>
             </span>
           )}
         </label>

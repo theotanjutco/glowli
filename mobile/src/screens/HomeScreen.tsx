@@ -1,9 +1,10 @@
 import { View, Text, TouchableOpacity } from 'react-native';
-import { NativeStackNavigationProp } from '@react-navigation/native-stack'
+import { NativeStackScreenProps } from '@react-navigation/native-stack'
 
-type Props = {
-    navigation: NativeStackNavigationProp<any>;
-};
+// Import only Glowli's route definitions.
+import type { RootStackParamList } from '../types/navigation';
+
+type Props = NativeStackScreenProps<RootStackParamList, 'Home'>;
 
 export default function HomeScreen({ navigation }: Props) {
     return (

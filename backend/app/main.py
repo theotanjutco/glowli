@@ -1,7 +1,9 @@
-from fastapi import FastAPI, File, UploadFile, HTTPException
+from fastapi import FastAPI, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Literal, Annotated
+
+from app.image_validation import validate_uploaded_image
 
 #------Create FastAPI app--------------
 app = FastAPI(
@@ -49,11 +51,10 @@ def health_check():
 # Selfie Scan endpoint
 # Returns mock info as of now
 @app.post("/analyze", response_model = AnalyzeResponse)
-async def analyze_skin(file: Annotated[UploadFile, File()]):
-    contents = await file.read()
+async def analyze_skin(file: Annotated[UploadFile, File()]) -> AnalyzeResponse:
+    validated_image = await validate_uploaded_image(file)
 
-    if not contents:
-        raise HTTPException(status_code = 400, detail = "Uploaded image is empty")
+    _ = validated_image
     
     # mock response for now
     return AnalyzeResponse(

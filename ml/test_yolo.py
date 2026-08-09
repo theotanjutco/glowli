@@ -39,7 +39,7 @@ for result in results:
             class_name = model.names[class_id]
             confidence = float(box.conf[0])
             x1, y1, x2, y2 = box.xyxy[0].tolist()
-            print(f"-> {class_name} | confidence: {confidence:.2f} | box: ({int(x1)}, {int(y1)}, {int(x1)}, {int(y1)})")
+            print(f"-> {class_name} | confidence: {confidence:.2f} | box: ({int(x1)}, {int(y1)}, {int(x2)}, {int(y2)})")
 
 #--------------Save annotated image-----------------
 output_path = "ml/data/test_face_annotated.jpeg"
