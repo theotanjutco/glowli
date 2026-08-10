@@ -11,6 +11,9 @@ export default defineConfig({
     environment: 'jsdom',
     // Load custom DOM assertions before each test suite
     setupFiles: './src/setupTests.ts',
+    pool: 'threads',
+    maxWorkers: 1,
+    fileParallelism: false,
   }
 });
 

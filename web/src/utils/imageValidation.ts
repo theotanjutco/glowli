@@ -16,7 +16,7 @@ export function getImageValidationError(file: File): string | null {
     }
 
     if (file.size > MAX_FILE_SIZE_BYTES) {
-        return 'Image must be 10 MB or smaller'
+        return 'Image must be 10 MB or smaller.'
     }
 
     return null;
