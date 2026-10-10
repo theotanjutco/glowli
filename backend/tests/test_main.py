@@ -1,4 +1,8 @@
 from io import BytesIO
+from unittest.mock import patch
+
+import cv2
+import pytest
 
 # Import FastAPI's synchronous test client
 from fastapi.testclient import TestClient
@@ -39,7 +43,10 @@ def test_analyze_accepts_valid_image() -> None:
         )
     }
 
-    response = client.post("/analyze", files=files) #uploade image to glowli
+    with patch("app.main.count_faces", return_value=1) as detector:
+        response = client.post("/analyze", files=files)
+
+    detector.assert_called_once()
 
     assert response.status_code == 200 # confirms that validation succeeded
 
@@ -106,4 +113,54 @@ def test_analyze_rejects_small_image() -> None:  # Tests an image below the mini
     assert response.status_code == 400  # Confirms that Glowli rejects small images.
     assert response.json()["detail"] == (  # Confirms the dimension error message.
         "Image must be at least 400 by 400 pixels"
+    )
+
+
+@pytest.mark.parametrize(
+    ("face_count", "message"),
+    [
+        (
+            0,
+            "No face detected. Please upload a clear, front-facing selfie.",
+        ),
+        (
+            2,
+            "Multiple faces detected. Please upload a photo of only yourself.",
+        ),
+    ],
+)
+def test_analyze_rejects_invalid_face_count(
+    face_count: int,
+    message: str,
+) -> None:
+    files = {
+        "file": ("selfie.jpg", create_test_image(), "image/jpeg"),
+    }
+
+    with patch("app.main.count_faces", return_value=face_count) as detector:
+        response = client.post("/analyze", files=files)
+
+    detector.assert_called_once()
+    assert response.status_code == 400
+    assert response.json()["detail"] == message
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [
+        RuntimeError("The YuNet model file is missing."),
+        cv2.error("Detection failed."),
+    ],
+)
+def test_analyze_handles_detector_failure(failure: Exception) -> None:
+    files = {
+        "file": ("selfie.jpg", create_test_image(), "image/jpeg"),
+    }
+
+    with patch("app.main.count_faces", side_effect=failure):
+        response = client.post("/analyze", files=files)
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == (
+        "Face detection is currently unavailable. Please try again later."
     )

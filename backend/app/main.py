@@ -1,9 +1,13 @@
-from fastapi import FastAPI, File, UploadFile
+import cv2
+
+from fastapi import FastAPI, File, HTTPException, UploadFile
+from starlette.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import Literal, Annotated
 
 from app.image_validation import validate_uploaded_image
+from app.face_detection import count_faces
 
 #------Create FastAPI app--------------
 app = FastAPI(
@@ -54,7 +58,25 @@ def health_check():
 async def analyze_skin(file: Annotated[UploadFile, File()]) -> AnalyzeResponse:
     validated_image = await validate_uploaded_image(file)
 
-    _ = validated_image
+    try:
+        face_count = await run_in_threadpool(count_faces, validated_image)
+    except (RuntimeError, cv2.error) as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Face detection is currently unavailable. Please try again later.",
+        ) from exc
+
+    if face_count == 0:
+        raise HTTPException(
+            status_code=400,
+            detail="No face detected. Please upload a clear, front-facing selfie.",
+        )
+
+    if face_count > 1:
+        raise HTTPException(
+            status_code=400,
+            detail="Multiple faces detected. Please upload a photo of only yourself.",
+        )
     
     # mock response for now
     return AnalyzeResponse(
