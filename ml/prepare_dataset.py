@@ -2,6 +2,7 @@ import hashlib
 import json
 import math
 import random
+import shutil
 from collections import Counter, defaultdict
 from pathlib import Path
 from zipfile import ZipFile
@@ -199,41 +200,171 @@ def split_images(
         "valid": round(len(images) * ratios["valid"]),
     }
     targets["test"] = len(images) - sum(targets.values())
+    needed = {
+        name: {
+            class_id: totals[class_id] * ratio
+            for class_id in range(10)
+        }
+        for name, ratio in ratios.items()
+    }
     splits = {name: [] for name in ratios}
-    counts = {name: Counter() for name in ratios}
     ordered = sorted(images)
     random.Random(seed).shuffle(ordered)
-    ordered.sort(
-        key=lambda path: min(
-            (totals[class_id] for class_id in classes[path]),
-            default=float("inf"),
-        )
-    )
+    remaining = dict.fromkeys(ordered)
 
-    for path in ordered:
-        available = [
-            name for name in ratios
-            if len(splits[name]) < targets[name]
+    while remaining:
+        remaining_counts = Counter(
+            class_id
+            for path in remaining
+            for class_id in classes[path]
+        )
+
+        if not remaining_counts:
+            for path in remaining:
+                destination = max(
+                    ratios,
+                    key=lambda name: targets[name] - len(splits[name]),
+                )
+                splits[destination].append(path)
+            break
+
+        rarest = min(
+            remaining_counts,
+            key=lambda class_id: (remaining_counts[class_id], class_id),
+        )
+        candidates = [
+            path for path in remaining
+            if rarest in classes[path]
         ]
 
-        def priority(name: str) -> tuple[int, float, float]:
-            unseen = sum(
-                counts[name][class_id] == 0
-                for class_id in classes[path]
+        for path in candidates:
+            available = [
+                name for name in ratios
+                if len(splits[name]) < targets[name]
+            ]
+            destination = max(
+                available,
+                key=lambda name: (
+                    needed[name][rarest],
+                    targets[name] - len(splits[name]),
+                ),
             )
-            deficit = sum(
-                ratios[name] - counts[name][class_id] / totals[class_id]
-                for class_id in classes[path]
-            )
-            room = (targets[name] - len(splits[name])) / targets[name]
-            return unseen, deficit, room
+            splits[destination].append(path)
 
-        destination = max(available, key=priority)
-        splits[destination].append(path)
-        counts[destination].update(classes[path])
+            for class_id in classes[path]:
+                needed[destination][class_id] -= 1
 
-    for name in splits:
-        if any(counts[name][class_id] == 0 for class_id in range(10)):
+            del remaining[path]
+
+    for name, paths in splits.items():
+        present = {
+            class_id for path in paths for class_id in classes[path]
+        }
+        if present != set(range(10)):
             raise ValueError(f"{name} is missing a class; review the split.")
 
     return splits
+
+
+def export_dataset(
+    source_dir: Path,
+    splits: dict[str, list[Path]],
+    output_dir: Path,
+) -> None:
+    expected_splits = {"train", "valid", "test"}
+    if set(splits) != expected_splits:
+        raise ValueError("Expected train, valid, and test splits.")
+
+    source_dir = source_dir.resolve()
+    jobs = []
+    seen = set()
+
+    for split, image_paths in splits.items():
+        if not image_paths:
+            raise ValueError(f"{split} has no images.")
+
+        for image_path in image_paths:
+            image_path = image_path.resolve()
+            relative = image_path.relative_to(source_dir)
+            if (
+                len(relative.parts) != 3
+                or relative.parts[0] not in expected_splits
+                or relative.parts[1] != "images"
+                or image_path.suffix.lower() != ".jpg"
+            ):
+                raise ValueError(f"Unexpected image path: {image_path}")
+
+            if image_path in seen:
+                raise ValueError(f"Repeated image: {image_path}")
+            seen.add(image_path)
+
+            label_path = (
+                image_path.parent.parent
+                / "labels"
+                / f"{image_path.stem}.txt"
+            )
+            if not image_path.is_file() or not label_path.is_file():
+                raise FileNotFoundError(f"Missing image or label: {image_path}")
+
+            export_stem = f"{relative.parts[0]}_{image_path.stem}"
+            jobs.append((split, image_path, label_path, export_stem))
+
+    retained_files = (
+        "README.dataset.txt",
+        "README.roboflow.txt",
+        "conversion_report.json",
+    )
+    for filename in retained_files:
+        if not (source_dir / filename).is_file():
+            raise FileNotFoundError(f"Missing source record: {filename}")
+
+    output_dir.mkdir(parents=True, exist_ok=False)
+    output_dir = output_dir.resolve()
+    for split in splits:
+        (output_dir / split / "images").mkdir(parents=True)
+        (output_dir / split / "labels").mkdir()
+
+    manifest = {split: [] for split in splits}
+    for split, image_path, label_path, export_stem in jobs:
+        image_name = f"{export_stem}.jpg"
+        shutil.copy2(
+            image_path,
+            output_dir / split / "images" / image_name,
+        )
+        shutil.copy2(
+            label_path,
+            output_dir / split / "labels" / f"{export_stem}.txt",
+        )
+        manifest[split].append({
+            "source": image_path.relative_to(source_dir).as_posix(),
+            "image": f"{split}/images/{image_name}",
+            "label": f"{split}/labels/{export_stem}.txt",
+        })
+
+    for filename in retained_files:
+        shutil.copy2(source_dir / filename, output_dir / filename)
+
+    names = [
+        "Acne", "Blackheads", "Dark-Spots", "Dry-Skin",
+        "Englarged-Pores", "Eyebags", "Oily-Skin",
+        "Skin-Redness", "Whiteheads", "Wrinkles",
+    ]
+    config = [
+        f"path: {json.dumps(output_dir.as_posix())}",
+        "train: train/images",
+        "val: valid/images",
+        "test: test/images",
+        "names:",
+    ]
+    config.extend(
+        f"  {class_id}: {name}"
+        for class_id, name in enumerate(names)
+    )
+    (output_dir / "data.yaml").write_text(
+        "\n".join(config) + "\n",
+        encoding="utf-8",
+    )
+    (output_dir / "export_manifest.json").write_text(
+        json.dumps(manifest, indent=2),
+        encoding="utf-8",
+    )
