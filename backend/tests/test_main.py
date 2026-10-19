@@ -32,30 +32,61 @@ def test_health_check_returns_ok() -> None:
         "version":"0.1.0",
     }
 
-def test_analyze_accepts_valid_image() -> None:
-    image_bytes = create_test_image()
+@pytest.mark.parametrize(
+    "predictions",
+    [
+        [],
+        [{
+            "label": "Acne",
+            "confidence": 0.7,
+            "box": {"x1": 0.1, "y1": 0.2, "x2": 0.3, "y2": 0.4},
+        }],
+    ],
+)
+def test_analyze_accepts_valid_image(predictions: list[dict]) -> None:
+    files = {"file": ("selfie.jpg", create_test_image(), "image/jpeg")}
 
-    files = {
-        "file": (
-            "selfie.jpg",
-            image_bytes,
-            "image/jpeg",
-        )
-    }
-
-    with patch("app.main.count_faces", return_value=1) as detector:
+    with (
+        patch("app.main.count_faces", return_value=1) as face_detector,
+        patch("app.main.predict_acne", return_value=predictions) as acne_detector,
+    ):
         response = client.post("/analyze", files=files)
 
-    detector.assert_called_once()
+    face_detector.assert_called_once()
+    acne_detector.assert_called_once()
+    assert response.status_code == 200
 
-    assert response.status_code == 200 # confirms that validation succeeded
+    body = response.json()
+    assert body["detections"] == predictions
+    assert body["image_width"] == 400
+    assert body["image_height"] == 400
+    assert "skin_type" not in body
+    assert "conditions" not in body
+    if not predictions:
+        assert "does not rule out acne" in body["summary"]
 
-    body = response.json() #converts json response to python dict
 
-    assert body["skin_type"] == "combination"  # Confirms the current mocked skin type.
-    assert len(body["conditions"]) > 0  # Confirms that at least one condition was returned.
-    assert body["conditions"][0]["label"] == "Acne"  # Confirms the mocked condition.
-    assert body["conditions"][0]["confidence"] == 0.93  # Confirms the mocked confidence.
+@pytest.mark.parametrize(
+    "failure",
+    [
+        RuntimeError("Model unavailable"),
+        OSError("Cannot read model"),
+        cv2.error("Inference failed"),
+    ],
+)
+def test_analyze_handles_acne_failure(failure: Exception) -> None:
+    files = {"file": ("selfie.jpg", create_test_image(), "image/jpeg")}
+
+    with (
+        patch("app.main.count_faces", return_value=1),
+        patch("app.main.predict_acne", side_effect=failure),
+    ):
+        response = client.post("/analyze", files=files)
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == (
+        "Acne detection is currently unavailable. Please try again later."
+    )
 
 def test_analyze_rejects_empty_upload() -> None:
     files = {"file": ("empty.jpg", b"", "image/jpeg")}

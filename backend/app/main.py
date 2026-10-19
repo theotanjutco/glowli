@@ -3,16 +3,17 @@ import cv2
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from starlette.concurrency import run_in_threadpool
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Literal, Annotated
 
 from app.image_validation import validate_uploaded_image
 from app.face_detection import count_faces
+from app.acne_detection import predict_acne
 
 #------Create FastAPI app--------------
 app = FastAPI(
     title = "Glowli API",
-    description = "AI-powered facial skin analysis and skincare recommendation API",
+    description = "Experimental acne detection API",
     version = "0.1.0"
 )
 
@@ -26,18 +27,24 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-#-----The blueprint/exact JSON shape the web app will receive---------
-# helps frontend and backend agree before using YOLO (pydantic)
-class SkinCondition(BaseModel):
-    label: str
-    severity: Literal["mild", "moderate", "severe"]
-    confidence: float
-    description: str
+class BoundingBox(BaseModel):
+    x1: float = Field(ge=0, le=1)
+    y1: float = Field(ge=0, le=1)
+    x2: float = Field(ge=0, le=1)
+    y2: float = Field(ge=0, le=1)
+
+
+class AcneDetection(BaseModel):
+    label: Literal["Acne"]
+    confidence: float = Field(ge=0, le=1)
+    box: BoundingBox
+
 
 class AnalyzeResponse(BaseModel):
-    skin_type: Literal["oily", "dry", "combination", "sensitive", "normal"]
     summary: str
-    conditions: list[SkinCondition]
+    image_width: int = Field(gt=0)
+    image_height: int = Field(gt=0)
+    detections: list[AcneDetection]
 
 #------Routes-------------------------
 @app.get("/")
@@ -53,7 +60,6 @@ def health_check():
     }
 
 # Selfie Scan endpoint
-# Returns mock info as of now
 @app.post("/analyze", response_model = AnalyzeResponse)
 async def analyze_skin(file: Annotated[UploadFile, File()]) -> AnalyzeResponse:
     validated_image = await validate_uploaded_image(file)
@@ -77,18 +83,27 @@ async def analyze_skin(file: Annotated[UploadFile, File()]) -> AnalyzeResponse:
             status_code=400,
             detail="Multiple faces detected. Please upload a photo of only yourself.",
         )
-    
-    # mock response for now
-    return AnalyzeResponse(
-        skin_type = "combination",
-        summary = "Mock scan complete. Glowli found a few mild areas to review.",
-        conditions = [
-            SkinCondition(
-                label = "Acne",
-                severity = "mild",
-                confidence = .93,
-                description = "A small number of blemish-like spots were detected.",
-            )
-        ],
+    try:
+        predictions = await run_in_threadpool(predict_acne, validated_image)
+    except (RuntimeError, OSError, cv2.error) as exc:
+        raise HTTPException(
+            status_code=503,
+            detail="Acne detection is currently unavailable. Please try again later.",
+        ) from exc
+
+    detections = [
+        AcneDetection.model_validate(prediction)
+        for prediction in predictions
+    ]
+    summary = (
+        f"Found {len(detections)} possible acne regions. Results are experimental."
+        if detections
+        else "No detections above the confidence threshold. This does not rule out acne."
     )
-    
+
+    return AnalyzeResponse(
+        summary=summary,
+        image_width=validated_image.width,
+        image_height=validated_image.height,
+        detections=detections,
+    )
