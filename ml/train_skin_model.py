@@ -20,8 +20,8 @@ def main() -> None:
     model = YOLO(str(model_dir / "yolov8n.pt"))
     model.train(
         data=str(dataset_config),
-        epochs=1,
-        fraction=0.10,
+        epochs=10,
+        fraction=1.0,
         imgsz=640,
         batch=4,
         device="cpu",
@@ -32,7 +32,7 @@ def main() -> None:
         save=True,
         plots=True,
         project=str(project_root / ".cache" / "training"),
-        name="skin_smoke",
+        name="skin_baseline_10",
         exist_ok=False,
     )
 
