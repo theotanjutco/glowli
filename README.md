@@ -1,116 +1,167 @@
-# Glowli
+# Glowli — Acne Detection Prototype
 
-Glowli is a web-first skincare analysis project. A user selects a selfie in the browser, the React frontend uploads it to a FastAPI endpoint, and the API returns a typed skin-analysis response. The current `/analyze` response is a development mock while the computer-vision pipeline is being built.
+Glowli is an experimental computer-vision application that accepts a selfie, checks that it contains exactly one face, and displays predicted acne regions with bounding boxes and confidence scores.
 
-## Active Tech Stack
+The prototype uses a React interface, a FastAPI backend, YuNet face detection, and a YOLOv8n model fine-tuned for acne detection. Predictions come from the trained model; they are no longer mock responses.
 
-- **Frontend:** React + TypeScript + Vite + CSS
-- **HTTP client:** Axios
-- **Backend:** Python + FastAPI + Pydantic
-- **Planned ML:** YOLOv8 + PyTorch
-- **Planned personalization:** LangChain + ChromaDB + an evaluated language model
+**Status:** the core upload-to-prediction workflow is implemented. Model performance remains limited, and the project is not a diagnostic tool.
 
-## Project Structure
+## Features
 
-- `web/` - active React and TypeScript browser application
-- `backend/` - FastAPI REST API and mock analysis response
-- `ml/` - YOLOv8 experiments and future training code
-- `mobile/` - preserved legacy Expo prototype; no longer the active product direction
-- `.github/workflows/` - future CI/CD workflows
+- JPEG, PNG, and WebP uploads with file-size and image-dimension checks.
+- Pillow preprocessing for orientation correction, RGB conversion, and metadata removal from the processed image.
+- YuNet validation requiring exactly one detected face.
+- CPU inference using a fine-tuned YOLOv8n model.
+- Typed API responses containing normalized bounding boxes and confidence scores.
+- Numbered box overlays that scale with the displayed photo.
+- Loading, invalid-upload, model-unavailable, and empty-result states.
 
-## Current Workflow
+The application does not provide skin-type classification, severity grading, product recommendations, or skincare routines.
+
+## Architecture
 
 ```mermaid
 flowchart LR
-    U[Browser user] --> W[React web app]
-    W -->|multipart POST /analyze| API[FastAPI backend]
-    API -->|typed JSON response| W
-    W --> R[Results view]
-
-    API -. future .-> CV[YOLOv8 pipeline]
-    API -. future .-> RAG[RAG and recommendations]
+    A[Photo upload] --> B[Pillow validation and preprocessing]
+    B --> C[YuNet single-face check]
+    C --> D[YOLOv8n acne inference]
+    D --> E[FastAPI typed JSON response]
+    E --> F[Photo overlays and confidence scores]
 ```
 
-## Implemented Features
+The backend caches its models and protects shared inference with locks. CPU inference runs in a thread pool so it does not run directly on the async request loop.
 
-- Browser-based selfie file selection
-- Local image preview
-- Loading and error states
-- Axios multipart upload to FastAPI
-- Typed analysis response shared across the web UI
-- Results view for skin type, conditions, severity, and confidence
-- FastAPI health endpoint
-- Mock FastAPI analysis endpoint
-- Generic YOLOv8 proof-of-concept script
+Boxes use normalized corner coordinates: `x1`, `y1`, `x2`, and `y2`, relative to the orientation-corrected image. The frontend converts these to percentages and hides overlays if the displayed image dimensions do not match the response.
+
+## Technology
+
+| Area | Tools |
+|---|---|
+| Interface | React, TypeScript, Vite, CSS |
+| API client | Axios |
+| Backend | FastAPI, Pydantic |
+| Image processing | Pillow, OpenCV |
+| Face detection | YuNet |
+| Acne detection | Ultralytics YOLOv8n, PyTorch |
+| Tests | pytest, Vitest, React Testing Library |
+
+## Dataset and Preparation
+
+The acne subset was prepared from **Skin-Problem-Detection-Relabel-Clean3, version 2**, published on Roboflow by Parin Kittipongdaja.
+
+Preparation included:
+
+- Converting polygon annotations into YOLO bounding boxes.
+- Excluding exact-duplicate groups pending label review.
+- Auditing visually similar images and grouping flagged matches before splitting to reduce leakage.
+- Preserving those split assignments when selecting acne-labeled images.
+- Exporting only class `0` (`Acne`) annotations while retaining source attribution files.
+
+| Split | Images | Acne annotations |
+|---|---:|---:|
+| Training | 809 | 6,666 |
+| Validation | 173 | 1,530 |
+
+This subset contains images with acne annotations, **not verified acne-free negatives**. Missing annotations do not establish that an image or region is acne-free. Similarity grouping also does not guarantee that every related image or repeated subject was identified.
+
+Dataset images and trained checkpoints are excluded from Git. Preserve source attribution and review the source dataset's terms before redistribution.
+
+## Training and Evaluation
+
+Fine-tuned YOLOv8n for 10 epochs on an acne detection dataset and evaluated it on a separate validation split. The model remains experimental, with missed detections and false positives. Further evaluation and improvement are ongoing.
+
+The baseline used pretrained YOLOv8n weights, 640-pixel inputs, batch size 4, and CPU execution. Training took approximately 48 minutes. Detailed metrics are retained in the local experiment outputs under `.cache/training/acne_baseline_10/`.
+
+The held-out test split has not been evaluated. Results on the positive-only validation subset do not establish performance on acne-free selfies. Confidence scores are model outputs, not calibrated probabilities of a diagnosis.
+
+## Project Structure
+
+- `web/` — current local demonstration interface.
+- `backend/app/` — upload validation, face detection, acne inference, and API.
+- `backend/tests/` — API behavior tests.
+- `ml/` — annotation conversion, similarity auditing, grouped splitting, export, and training utilities.
+- `mobile/` — legacy Expo prototype.
+- `.cache/` — ignored local datasets, checkpoints, and experiment outputs.
 
 ## Local Setup
 
-### 1. Start FastAPI
+Commands below use **Git Bash on Windows**, from the repository root.
 
-```powershell
-Set-Location C:\glowli\backend
-.\.venv\Scripts\python.exe -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+### Prerequisites
+
+Install Node.js/npm and Python. The recorded training environment used Python 3.14.6 and CPU PyTorch 2.12.1.
+
+Create the backend environment and install dependencies:
+
+```bash
+python -m venv backend/.venv
+backend/.venv/Scripts/python.exe -m pip install -r backend/requirements.txt
 ```
 
-Verify the API at `http://127.0.0.1:8000/health`.
+The API expects these local models:
 
-### 2. Configure the web frontend
+- `backend/models/face_detection_yunet_2023mar.onnx`
+- `.cache/training/acne_baseline_10/weights/best.pt`
 
-Copy `web/.env.example` to `web/.env.local` when you need to override the default API URL.
+The acne checkpoint is **not included in Git**, so a fresh clone is not ready for inference until that artifact is available.
 
-```dotenv
-VITE_API_BASE_URL=http://127.0.0.1:8000
+To train the current baseline, first prepare the acne export at `.cache/datasets/acne-only-v1/data.yaml` and provide pretrained weights at `.cache/models/yolov8n.pt`, then run:
+
+```bash
+backend/.venv/Scripts/python.exe ml/train_acne_model.py
 ```
 
-### 3. Start React
+Dataset preparation currently uses the utilities in `ml/`; it is not yet packaged as a complete one-command setup.
 
-```powershell
-Set-Location C:\glowli\web
-npm install
+### Start the API
+
+```bash
+cd backend
+.venv/Scripts/python.exe -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+```
+
+Health check: `http://127.0.0.1:8000/health`
+
+Interactive API documentation: `http://127.0.0.1:8000/docs`
+
+### Start the Interface
+
+In a second terminal, from the repository root:
+
+```bash
+cd web
+npm ci
 npm run dev
 ```
 
 Open `http://localhost:5173`.
 
-## MVP Roadmap
+The default API URL is `http://127.0.0.1:8000`. Copy `web/.env.example` to `web/.env.local` to override it.
 
-### Phase 1 - Web Foundation
+## Verification
 
-- [x] Repository setup
-- [x] React web app scaffold
-- [x] Backend API scaffold
-- [x] Browser selfie upload
-- [x] Mock results workflow
-- [ ] Automated frontend and backend tests
+Backend, from `backend/`:
 
-### Phase 2 - Core AI
+```bash
+.venv/Scripts/python.exe -m pytest tests -q
+```
 
-- [ ] Image validation and preprocessing
-- [ ] Face detection pipeline
-- [ ] Fine-tuned skin condition detection
-- [ ] Severity scoring
-- [ ] Model evaluation and documented metrics
+Frontend, from `web/`:
 
-### Phase 3 - Personalization
+```bash
+npm test
+npm run build
+```
 
-- [ ] Product recommendation engine
-- [ ] RAG-based skincare knowledge base
-- [ ] Personalized skincare routines
+Latest verified checks: **14 backend tests passed, 5 frontend tests passed, and the production frontend build passed**. A real validation-image upload also completed through the API and displayed a numbered prediction box.
 
-### Phase 4 - User Experience
+These checks verify software behavior; they do not establish model accuracy.
 
-- [ ] Authentication
-- [ ] User profiles
-- [ ] Analysis history
-- [ ] Progress tracking dashboard
+## Remaining Work
 
-### Phase 5 - Production
-
-- [ ] Cloud deployment
-- [ ] CI/CD pipeline
-- [ ] Analytics and error monitoring
-- [ ] Beta testing
-
-## Important Scope Note
-
-Glowli currently returns mock development data and must not be presented as a medical diagnosis. Real model claims should only be added after training, evaluation, safety review, and privacy controls are complete.
+- Review representative photos and failure cases through the complete application.
+- Update remaining interface wording to match the acne-only scope.
+- Review annotation quality and add verified negative examples.
+- Evaluate confidence thresholds using validation data.
+- Improve model performance and document a reproducible artifact setup.
+- Evaluate the held-out test set after model-selection decisions are complete.
