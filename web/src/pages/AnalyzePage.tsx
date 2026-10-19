@@ -5,7 +5,7 @@ import { getImageValidationError } from '../utils/imageValidation';
 
 type AnalyzePageProps = {
   onBack: () => void;
-  onComplete: (analysis: AnalyzeResponse) => void;
+  onComplete: (analysis: AnalyzeResponse, file: File) => void;
 };
 
 export default function AnalyzePage({ onBack, onComplete }: AnalyzePageProps) {
@@ -60,7 +60,7 @@ export default function AnalyzePage({ onBack, onComplete }: AnalyzePageProps) {
 
     try {
       const analysis = await analyzeSelfie(selectedFile);
-      onComplete(analysis);
+      onComplete(analysis, selectedFile);
     } catch (error: unknown) {
       setErrorMessage(getApiErrorMessage(error));
     } finally {

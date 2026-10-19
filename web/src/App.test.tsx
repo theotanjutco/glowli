@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 // Import Vitest's test, assertion, and mocking functions.
@@ -22,14 +22,14 @@ describe('Glowli browser workflow', () => {
 
         // Configure the mocked API to return the same shape as FastAPI
         vi.mocked(analyzeSelfie).mockResolvedValue({
-            skin_type: "combination",
-            summary: "Test Scan complete",
-            conditions: [
+            summary: 'Found 1 possible acne region. Results are experimental.',
+            image_width: 400,
+            image_height: 400,
+            detections: [
                 {
                     label: "Acne",
-                    severity: 'mild',
-                    confidence: 0.93,
-                    description: 'A test condition description.',
+                    confidence: 0.7,
+                    box: { x1: 0.1, y1: 0.2, x2: 0.3, y2: 0.4 },
                 }
             ]
         });
@@ -51,7 +51,21 @@ describe('Glowli browser workflow', () => {
         // Confirm that the API received the exact File selected by the user
         expect(analyzeSelfie).toHaveBeenCalledWith(selfie);
         expect(await screen.findByText('Your Glowli results')).toBeInTheDocument();
-        expect(screen.getByText('Acne')).toBeInTheDocument();
-        expect(screen.getByText('93%')).toBeInTheDocument();
+        expect(screen.getByText(/model confidence 70%/i)).toBeInTheDocument();
+
+        const photo = screen.getByRole('img', { name: 'Uploaded selfie' });
+        Object.defineProperty(photo, 'naturalWidth', { configurable: true, value: 400 });
+        Object.defineProperty(photo, 'naturalHeight', { configurable: true, value: 400 });
+        fireEvent.load(photo);
+
+        const box = screen.getByTestId('detection-box');
+        expect(box).toHaveStyle({ left: '10%', top: '20%' });
+        expect(parseFloat(box.style.width)).toBeCloseTo(20);
+        expect(parseFloat(box.style.height)).toBeCloseTo(20);
+
+        Object.defineProperty(photo, 'naturalWidth', { configurable: true, value: 800 });
+        fireEvent.load(photo);
+        expect(screen.queryByTestId('detection-box')).not.toBeInTheDocument();
+        expect(screen.getByRole('alert')).toHaveTextContent(/dimensions differ/i);
     });
 });

@@ -1,22 +1,20 @@
-export type SkinType =
-  | 'oily'
-  | 'dry'
-  | 'combination'
-  | 'sensitive'
-  | 'normal';
+export type BoundingBox = {
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+};
 
-export type Severity = 'mild' | 'moderate' | 'severe';
-
-export type SkinCondition = {
-  label: string;
-  severity: Severity;
+export type AcneDetection = {
+  label: 'Acne';
   confidence: number;
-  description: string;
+  box: BoundingBox;
 };
 
 export type AnalyzeResponse = {
-  skin_type: SkinType;
   summary: string;
-  conditions: SkinCondition[];
+  image_width: number;
+  image_height: number;
+  detections: AcneDetection[];
 };
 

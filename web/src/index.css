@@ -6,6 +6,43 @@
   text-rendering: optimizeLegibility;
 }
 
+.detection-photo {
+  position: relative;
+  width: 100%;
+  max-width: 640px;
+  margin: 24px auto;
+}
+
+.detection-photo > img {
+  display: block;
+  width: 100%;
+  height: auto;
+  image-orientation: from-image;
+}
+
+.detection-box {
+  position: absolute;
+  border: 2px solid #facc15;
+  box-shadow: 0 0 0 1px #28202a;
+  pointer-events: none;
+}
+
+.detection-number {
+  position: absolute;
+  top: 0;
+  left: 0;
+  padding: 1px 3px;
+  background: #facc15;
+  color: #28202a;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.detection-list {
+  padding-left: 28px;
+  line-height: 1.8;
+}
+
 * {
   box-sizing: border-box;
 }
